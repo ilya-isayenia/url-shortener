@@ -1,0 +1,13 @@
+# PostgreSQL and Redis for local development and tests.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - '5433:5432'
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6380:6379'
