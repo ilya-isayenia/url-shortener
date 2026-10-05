@@ -8,10 +8,16 @@ export interface AppDeps {
   logger?: boolean;
 }
 
+/** The longest a link may live: a year. */
+export const MAX_EXPIRY_SECONDS = 365 * 24 * 60 * 60;
+
 const createBody = {
   type: 'object',
   required: ['url'],
-  properties: { url: { type: 'string', minLength: 1, maxLength: 2048 } },
+  properties: {
+    url: { type: 'string', minLength: 1, maxLength: 2048 },
+    expiresInSeconds: { type: 'integer', minimum: 60, maximum: MAX_EXPIRY_SECONDS },
+  },
   additionalProperties: false,
 } as const;
 
@@ -22,12 +28,12 @@ export function buildApp({ links, baseUrl, logger = false }: AppDeps): FastifyIn
 
   app.get('/health', async () => ({ status: 'ok' }));
 
-  app.post<{ Body: { url: string } }>(
+  app.post<{ Body: { url: string; expiresInSeconds?: number } }>(
     '/links',
     { schema: { body: createBody } },
     async (request, reply) => {
       try {
-        const link = await links.create(request.body.url);
+        const link = await links.create(request.body.url, request.body.expiresInSeconds);
         return reply.code(201).send(view(link));
       } catch (err) {
         if (err instanceof InvalidUrlError) return reply.code(400).send({ error: err.message });
@@ -45,9 +51,10 @@ export function buildApp({ links, baseUrl, logger = false }: AppDeps): FastifyIn
 
   app.get<{ Params: { slug: string } }>('/:slug', async (request, reply) => {
     const { slug } = request.params;
-    const url = isSlug(slug) ? await links.resolve(slug) : null;
-    if (!url) return reply.code(404).send({ error: 'Link not found' });
-    return reply.redirect(url, 302);
+    const resolved = isSlug(slug) ? await links.resolve(slug) : ({ status: 'missing' } as const);
+    if (resolved.status === 'expired') return reply.code(410).send({ error: 'Link expired' });
+    if (resolved.status === 'missing') return reply.code(404).send({ error: 'Link not found' });
+    return reply.redirect(resolved.url, 302);
   });
 
   return app;
