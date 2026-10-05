@@ -57,6 +57,7 @@ describe('POST /links', () => {
     const body = res.json();
     expect(body.url).toBe('https://example.com/docs');
     expect(body.shortUrl).toBe(`${BASE_URL}/${body.slug}`);
+    expect(body.clicks).toBe(0);
   });
 
   it('gives the same URL a new slug each time', async () => {
@@ -104,10 +105,34 @@ describe('GET /links/:slug', () => {
     const res = await app.inject({ method: 'GET', url: `/links/${created.slug}` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(created);
+    expect(res.json().clicks).toBe(0);
   });
 
   it('answers 404 for an unknown slug', async () => {
     expect((await app.inject({ method: 'GET', url: '/links/nope123' })).statusCode).toBe(404);
+  });
+
+  it('does not count views', async () => {
+    const { slug } = (await shorten('https://example.com/viewed')).json();
+    await app.inject({ method: 'GET', url: `/links/${slug}` });
+    const res = await app.inject({ method: 'GET', url: `/links/${slug}` });
+    expect(res.json().clicks).toBe(0);
+  });
+});
+
+describe('migrate', () => {
+  it('adds clicks to links stored before counting', async () => {
+    await db.query('ALTER TABLE links DROP COLUMN IF EXISTS clicks');
+    await db.query(
+      "INSERT INTO links (slug, url) VALUES ('oldlink1', 'https://example.com/old')",
+    );
+    await migrate(db);
+    await migrate(db);
+    const shown = await app.inject({ method: 'GET', url: '/links/oldlink1' });
+    expect(shown.json().clicks).toBe(0);
+    await app.inject({ method: 'GET', url: '/oldlink1' });
+    const after = await app.inject({ method: 'GET', url: '/links/oldlink1' });
+    expect(after.json().clicks).toBe(1);
   });
 });
 
