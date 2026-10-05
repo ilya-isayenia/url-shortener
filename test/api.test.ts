@@ -97,6 +97,62 @@ describe('GET /:slug', () => {
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('https://example.com/cached');
   });
+
+  const clicksOf = async (slug: string) =>
+    (await app.inject({ method: 'GET', url: `/links/${slug}` })).json().clicks;
+
+  it('counts every redirect, from the database and from the cache', async () => {
+    const { slug } = (await shorten('https://example.com/counted')).json();
+    for (let i = 0; i < 3; i++) {
+      expect((await app.inject({ method: 'GET', url: `/${slug}` })).statusCode).toBe(302);
+    }
+    expect(await clicksOf(slug)).toBe(3);
+  });
+
+  it('counts a HEAD request', async () => {
+    const { slug } = (await shorten('https://example.com/head')).json();
+    const res = await app.inject({ method: 'HEAD', url: `/${slug}` });
+    expect(res.statusCode).toBe(302);
+    expect(await clicksOf(slug)).toBe(1);
+  });
+
+  it('does not lose concurrent redirects', async () => {
+    const { slug } = (await shorten('https://example.com/concurrent')).json();
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => app.inject({ method: 'GET', url: `/${slug}` })),
+    );
+    for (const res of results) expect(res.statusCode).toBe(302);
+    expect(await clicksOf(slug)).toBe(20);
+  });
+
+  it('counts each link separately', async () => {
+    const a = (await shorten('https://example.com/a-link')).json();
+    const b = (await shorten('https://example.com/b-link')).json();
+    expect((await app.inject({ method: 'GET', url: `/${a.slug}` })).statusCode).toBe(302);
+    expect((await app.inject({ method: 'GET', url: '/nope123' })).statusCode).toBe(404);
+    expect(await clicksOf(a.slug)).toBe(1);
+    expect(await clicksOf(b.slug)).toBe(0);
+  });
+
+  it('redirects when the count cannot be stored', async () => {
+    const { slug } = (await shorten('https://example.com/uncounted')).json();
+    // Cache it first through the shared app.
+    await app.inject({ method: 'GET', url: `/${slug}` });
+
+    class FailingLinkService extends LinkService {
+      async countClick(): Promise<void> {
+        throw new Error('counting failed');
+      }
+    }
+    const failingApp = buildApp({
+      links: new FailingLinkService(db, cache, 60),
+      baseUrl: BASE_URL,
+    });
+    const res = await failingApp.inject({ method: 'GET', url: `/${slug}` });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('https://example.com/uncounted');
+    await failingApp.close();
+  });
 });
 
 describe('GET /links/:slug', () => {
