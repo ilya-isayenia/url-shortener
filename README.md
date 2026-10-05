@@ -7,9 +7,9 @@ PostgreSQL, recently resolved links cached in Redis.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/links` | Shortens `{ "url": "https://…" }`: `201` with `{ slug, url, createdAt, shortUrl }`; `400` for anything but an absolute http(s) URL. |
-| `GET` | `/:slug` | `302` to the link's URL; `404` for an unknown slug. |
-| `GET` | `/links/:slug` | The link: `{ slug, url, createdAt, shortUrl }`; `404` for an unknown slug. |
+| `POST` | `/links` | Shortens `{ "url": "https://…", "expiresInSeconds": 3600 }` (`expiresInSeconds` optional, 60 s to a year): `201` with `{ slug, url, createdAt, expiresAt, shortUrl }`; `400` for anything but an absolute http(s) URL or an expiry out of range. |
+| `GET` | `/:slug` | `302` to the link's URL; `410` once the link has expired; `404` for an unknown slug. |
+| `GET` | `/links/:slug` | The link: `{ slug, url, createdAt, expiresAt, shortUrl }`, expired ones too; `404` for an unknown slug. |
 | `GET` | `/health` | `{ "status": "ok" }`. |
 
 A slug is 7 random letters and digits. Every `POST` makes a new slug, even for a URL shortened
@@ -22,7 +22,8 @@ before.
 - `src/links.ts` — the link service: URL validation, slug collisions (retried), resolving.
 - `src/db.ts` — the PostgreSQL pool and the schema, created on start (`migrate`).
 - `src/cache.ts` — the Redis cache. A redirect reads the cache first and falls back to the
-  database; a link stays cached for `CACHE_TTL_SECONDS`.
+  database; a link stays cached for `CACHE_TTL_SECONDS`, never past its expiry — so a cached link
+  is always a live one, and only the database answers "expired".
 - `src/slug.ts` — slug generation and the slug format.
 - `src/config.ts`, `src/server.ts` — settings from the environment, start and shutdown.
 
