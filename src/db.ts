@@ -17,4 +17,6 @@ export async function migrate(db: Db): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // A link may expire; null — it never does.
+  await db.query('ALTER TABLE links ADD COLUMN IF NOT EXISTS expires_at timestamptz');
 }
