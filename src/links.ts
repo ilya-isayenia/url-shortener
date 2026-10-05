@@ -6,7 +6,12 @@ export interface Link {
   slug: string;
   url: string;
   createdAt: string;
+  /** When the link stops redirecting; null — never. */
+  expiresAt: string | null;
 }
+
+/** What a slug resolves to: its URL, or why there is none. */
+export type Resolved = { status: 'found'; url: string } | { status: 'expired' } | { status: 'missing' };
 
 /** The URL can't be shortened: the API answers 400 with the message. */
 export class InvalidUrlError extends Error {}
@@ -29,13 +34,27 @@ interface LinkRow {
   slug: string;
   url: string;
   created_at: Date;
+  expires_at: Date | null;
 }
 
 const toLink = (row: LinkRow): Link => ({
   slug: row.slug,
   url: row.url,
   createdAt: row.created_at.toISOString(),
+  expiresAt: row.expires_at?.toISOString() ?? null,
 });
+
+const COLUMNS = 'slug, url, created_at, expires_at';
+
+/**
+ * How long a link may stay cached: never past its expiry, so a cached link is always a live one.
+ * 0 — don't cache it.
+ */
+export function cacheTtl(link: Link, ttlSeconds: number, now = Date.now()): number {
+  if (!link.expiresAt) return ttlSeconds;
+  const left = Math.floor((Date.parse(link.expiresAt) - now) / 1000);
+  return Math.max(0, Math.min(ttlSeconds, left));
+}
 
 const cacheKey = (slug: string) => `link:${slug}`;
 
@@ -49,14 +68,16 @@ export class LinkService {
     private readonly cacheTtlSeconds: number,
   ) {}
 
-  async create(input: string): Promise<Link> {
+  /** `expiresInSeconds` — the link stops redirecting that long after it is made. */
+  async create(input: string, expiresInSeconds?: number): Promise<Link> {
     const url = normalizeUrl(input);
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const result = await this.db.query<LinkRow>(
-        `INSERT INTO links (slug, url) VALUES ($1, $2)
+        `INSERT INTO links (slug, url, expires_at)
+         VALUES ($1, $2, now() + make_interval(secs => $3::int))
          ON CONFLICT (slug) DO NOTHING
-         RETURNING slug, url, created_at`,
-        [newSlug(), url],
+         RETURNING ${COLUMNS}`,
+        [newSlug(), url, expiresInSeconds ?? null],
       );
       if (result.rows[0]) return toLink(result.rows[0]);
     }
@@ -64,20 +85,24 @@ export class LinkService {
   }
 
   async get(slug: string): Promise<Link | null> {
-    const result = await this.db.query<LinkRow>(
-      'SELECT slug, url, created_at FROM links WHERE slug = $1',
-      [slug],
-    );
+    const result = await this.db.query<LinkRow>(`SELECT ${COLUMNS} FROM links WHERE slug = $1`, [
+      slug,
+    ]);
     return result.rows[0] ? toLink(result.rows[0]) : null;
   }
 
-  /** The URL a slug redirects to: from the cache when it's there, else from the database. */
-  async resolve(slug: string): Promise<string | null> {
+  /**
+   * The URL a slug redirects to: from the cache when it's there, else from the database. The
+   * cache never holds a link past its expiry, so only the database can say it expired.
+   */
+  async resolve(slug: string): Promise<Resolved> {
     const cached = await this.cache.get(cacheKey(slug));
-    if (cached !== null) return cached;
+    if (cached !== null) return { status: 'found', url: cached };
     const link = await this.get(slug);
-    if (!link) return null;
-    await this.cache.set(cacheKey(slug), link.url, this.cacheTtlSeconds);
-    return link.url;
+    if (!link) return { status: 'missing' };
+    const ttl = cacheTtl(link, this.cacheTtlSeconds);
+    if (link.expiresAt && ttl === 0) return { status: 'expired' };
+    await this.cache.set(cacheKey(slug), link.url, ttl);
+    return { status: 'found', url: link.url };
   }
 }
