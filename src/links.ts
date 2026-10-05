@@ -83,4 +83,9 @@ export class LinkService {
     await this.cache.set(cacheKey(slug), link.url, this.cacheTtlSeconds);
     return link.url;
   }
+
+  /** Adds one to the slug's click count; a slug gone from the store updates no row, not an error. */
+  async countClick(slug: string): Promise<void> {
+    await this.db.query('UPDATE links SET clicks = clicks + 1 WHERE slug = $1', [slug]);
+  }
 }
