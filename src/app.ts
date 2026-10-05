@@ -47,6 +47,11 @@ export function buildApp({ links, baseUrl, logger = false }: AppDeps): FastifyIn
     const { slug } = request.params;
     const url = isSlug(slug) ? await links.resolve(slug) : null;
     if (!url) return reply.code(404).send({ error: 'Link not found' });
+    try {
+      await links.countClick(slug);
+    } catch (err) {
+      request.log.error({ err, slug }, 'Counting a click failed');
+    }
     return reply.redirect(url, 302);
   });
 
