@@ -7,9 +7,9 @@ PostgreSQL, recently resolved links cached in Redis.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/links` | Shortens `{ "url": "https://…" }`: `201` with `{ slug, url, createdAt, shortUrl }`; `400` for anything but an absolute http(s) URL. |
-| `GET` | `/:slug` | `302` to the link's URL; `404` for an unknown slug. |
-| `GET` | `/links/:slug` | The link: `{ slug, url, createdAt, shortUrl }`; `404` for an unknown slug. |
+| `POST` | `/links` | Shortens `{ "url": "https://…" }`: `201` with `{ slug, url, createdAt, shortUrl, clicks }`; `400` for anything but an absolute http(s) URL. |
+| `GET` | `/:slug` | `302` to the link's URL, adding one to its `clicks`; `404` for an unknown slug. |
+| `GET` | `/links/:slug` | The link: `{ slug, url, createdAt, shortUrl, clicks }`, `clicks` the number of redirects so far; `404` for an unknown slug. |
 | `GET` | `/health` | `{ "status": "ok" }`. |
 
 A slug is 7 random letters and digits. Every `POST` makes a new slug, even for a URL shortened
@@ -19,7 +19,8 @@ before.
 
 - `src/app.ts` — routes and validation; `buildApp` takes its dependencies, so tests build it
   against their own database and cache.
-- `src/links.ts` — the link service: URL validation, slug collisions (retried), resolving.
+- `src/links.ts` — the link service: URL validation, slug collisions (retried), resolving, and
+  counting clicks.
 - `src/db.ts` — the PostgreSQL pool and the schema, created on start (`migrate`).
 - `src/cache.ts` — the Redis cache. A redirect reads the cache first and falls back to the
   database; a link stays cached for `CACHE_TTL_SECONDS`.
