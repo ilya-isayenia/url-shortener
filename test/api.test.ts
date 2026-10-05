@@ -48,7 +48,8 @@ afterAll(async () => {
   await admin?.end();
 });
 
-const shorten = (url: unknown) => app.inject({ method: 'POST', url: '/links', payload: { url } });
+const shorten = (url: unknown, expiresInSeconds?: unknown) =>
+  app.inject({ method: 'POST', url: '/links', payload: { url, expiresInSeconds } });
 
 describe('POST /links', () => {
   it('shortens a URL', async () => {
@@ -108,6 +109,47 @@ describe('GET /links/:slug', () => {
 
   it('answers 404 for an unknown slug', async () => {
     expect((await app.inject({ method: 'GET', url: '/links/nope123' })).statusCode).toBe(404);
+  });
+});
+
+describe('link expiry', () => {
+  it('stores when a link expires', async () => {
+    const before = Date.now();
+    const body = (await shorten('https://example.com/soon', 3600)).json();
+    const expiresAt = Date.parse(body.expiresAt);
+    expect(expiresAt).toBeGreaterThanOrEqual(before + 3_599_000);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 3_601_000);
+    expect((await shorten('https://example.com/forever')).json().expiresAt).toBeNull();
+  });
+
+  it('redirects until the link expires, then answers 410', async () => {
+    const { slug } = (await shorten('https://example.com/soon', 3600)).json();
+    expect((await app.inject({ method: 'GET', url: `/${slug}` })).statusCode).toBe(302);
+    // Expired in the database, and the cache must not outlive it.
+    await db.query("UPDATE links SET expires_at = now() - interval '1 second' WHERE slug = $1", [
+      slug,
+    ]);
+    await cache.set(`link:${slug}`, 'https://example.com/soon', 1);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const res = await app.inject({ method: 'GET', url: `/${slug}` });
+    expect(res.statusCode).toBe(410);
+    expect(res.json()).toEqual({ error: 'Link expired' });
+  });
+
+  it('still shows an expired link', async () => {
+    const { slug } = (await shorten('https://example.com/old', 60)).json();
+    await db.query("UPDATE links SET expires_at = now() - interval '1 hour' WHERE slug = $1", [
+      slug,
+    ]);
+    const res = await app.inject({ method: 'GET', url: `/links/${slug}` });
+    expect(res.statusCode).toBe(200);
+    expect(Date.parse(res.json().expiresAt)).toBeLessThan(Date.now());
+  });
+
+  it('refuses an expiry out of range or not a whole number', async () => {
+    expect((await shorten('https://example.com', 59)).statusCode).toBe(400);
+    expect((await shorten('https://example.com', 366 * 24 * 3600)).statusCode).toBe(400);
+    expect((await shorten('https://example.com', 90.5)).statusCode).toBe(400);
   });
 });
 

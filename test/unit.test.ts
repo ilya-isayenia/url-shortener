@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidUrlError, normalizeUrl } from '../src/links.js';
+import { InvalidUrlError, type Link, cacheTtl, normalizeUrl } from '../src/links.js';
 import { SLUG_LENGTH, isSlug, newSlug } from '../src/slug.js';
 
 describe('newSlug', () => {
@@ -34,5 +34,28 @@ describe('normalizeUrl', () => {
     expect(() => normalizeUrl('ftp://example.com')).toThrow(InvalidUrlError);
     expect(() => normalizeUrl('javascript:alert(1)')).toThrow(InvalidUrlError);
     expect(() => normalizeUrl('example.com')).toThrow(InvalidUrlError);
+  });
+});
+
+describe('cacheTtl', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z');
+  const link = (expiresAt: string | null): Link => ({
+    slug: 'abc',
+    url: 'https://example.com/',
+    createdAt: '2025-12-31T00:00:00.000Z',
+    expiresAt,
+  });
+
+  it('keeps a link that never expires for the whole TTL', () => {
+    expect(cacheTtl(link(null), 3600, now)).toBe(3600);
+  });
+
+  it('never caches a link past its expiry', () => {
+    expect(cacheTtl(link('2026-01-01T00:10:00Z'), 3600, now)).toBe(600);
+    expect(cacheTtl(link('2026-01-02T00:00:00Z'), 3600, now)).toBe(3600);
+  });
+
+  it('is 0 for an expired link', () => {
+    expect(cacheTtl(link('2025-12-31T23:59:00Z'), 3600, now)).toBe(0);
   });
 });
