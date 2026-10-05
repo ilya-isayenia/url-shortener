@@ -31,6 +31,11 @@ beforeAll(async () => {
   await admin.connect();
   await admin.query(`CREATE DATABASE ${databaseName}`);
   db = createDb(databaseUrl(databaseName));
+  // Dropping the database at teardown ends the pool's connections from the server side: that is
+  // expected then, not a failure (57P01 — terminated by an administrator command).
+  db.on('error', (err: Error & { code?: string }) => {
+    if (err.code !== '57P01') throw err;
+  });
   await migrate(db);
   cache = createCache(process.env.REDIS_URL, `test:${run}:`);
   app = buildApp({ links: new LinkService(db, cache, 60), baseUrl: BASE_URL });
