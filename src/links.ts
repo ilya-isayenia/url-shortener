@@ -6,6 +6,7 @@ export interface Link {
   slug: string;
   url: string;
   createdAt: string;
+  clicks: number;
 }
 
 /** The URL can't be shortened: the API answers 400 with the message. */
@@ -29,12 +30,14 @@ interface LinkRow {
   slug: string;
   url: string;
   created_at: Date;
+  clicks: string;
 }
 
 const toLink = (row: LinkRow): Link => ({
   slug: row.slug,
   url: row.url,
   createdAt: row.created_at.toISOString(),
+  clicks: Number(row.clicks),
 });
 
 const cacheKey = (slug: string) => `link:${slug}`;
@@ -55,7 +58,7 @@ export class LinkService {
       const result = await this.db.query<LinkRow>(
         `INSERT INTO links (slug, url) VALUES ($1, $2)
          ON CONFLICT (slug) DO NOTHING
-         RETURNING slug, url, created_at`,
+         RETURNING slug, url, created_at, clicks`,
         [newSlug(), url],
       );
       if (result.rows[0]) return toLink(result.rows[0]);
@@ -65,7 +68,7 @@ export class LinkService {
 
   async get(slug: string): Promise<Link | null> {
     const result = await this.db.query<LinkRow>(
-      'SELECT slug, url, created_at FROM links WHERE slug = $1',
+      'SELECT slug, url, created_at, clicks FROM links WHERE slug = $1',
       [slug],
     );
     return result.rows[0] ? toLink(result.rows[0]) : null;
