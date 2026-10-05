@@ -4,7 +4,11 @@ import pg from 'pg';
 export type Db = pg.Pool;
 
 export function createDb(connectionString: string): Db {
-  return new pg.Pool({ connectionString });
+  const pool = new pg.Pool({ connectionString });
+  // Without a listener, pg turns an error on an idle client (e.g. Postgres closing it, as
+  // DROP DATABASE ... WITH (FORCE) does in the API tests' teardown) into an uncaught exception.
+  pool.on('error', () => {});
+  return pool;
 }
 
 /** Creates the schema if it isn't there and adds columns that are missing; safe to run on every start. */
