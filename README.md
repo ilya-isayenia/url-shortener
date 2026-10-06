@@ -7,13 +7,16 @@ PostgreSQL, recently resolved links cached in Redis.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/links` | Shortens `{ "url": "https://…" }`: `201` with `{ slug, url, createdAt, shortUrl }`; `400` for anything but an absolute http(s) URL. |
+| `POST` | `/links` | Shortens `{ "url": "https://…", "alias": "docs" }` (`alias` optional): `201` with `{ slug, url, createdAt, shortUrl }`; `400` for anything but an absolute http(s) URL, or for a malformed or reserved `alias`; `409` if `alias` is already taken. |
 | `GET` | `/:slug` | `302` to the link's URL; `404` for an unknown slug. |
 | `GET` | `/links/:slug` | The link: `{ slug, url, createdAt, shortUrl }`; `404` for an unknown slug. |
 | `GET` | `/health` | `{ "status": "ok" }`. |
 
-A slug is 7 random letters and digits. Every `POST` makes a new slug, even for a URL shortened
-before.
+A slug is 7 random letters and digits, case-sensitive; every `POST` without an `alias` makes a new
+one, even for a URL shortened before. An `alias` becomes the slug instead: 1 to 32 ASCII letters
+and digits, case-insensitive — stored and returned in lowercase, and `GET /<alias>` and
+`GET /links/<alias>` resolve it in any case. `health` and `links` are reserved and refused with
+`400`. An `alias` equal, ignoring case, to any existing slug (alias or random) is `409`.
 
 ## How it works
 
