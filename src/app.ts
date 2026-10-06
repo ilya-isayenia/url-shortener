@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { InvalidUrlError, type Link, type LinkService } from './links.js';
+import { AliasTakenError, InvalidAliasError, InvalidUrlError, type Link, type LinkService } from './links.js';
 import { isSlug } from './slug.js';
 
 export interface AppDeps {
@@ -11,7 +11,10 @@ export interface AppDeps {
 const createBody = {
   type: 'object',
   required: ['url'],
-  properties: { url: { type: 'string', minLength: 1, maxLength: 2048 } },
+  properties: {
+    url: { type: 'string', minLength: 1, maxLength: 2048 },
+    alias: { type: 'string' },
+  },
   additionalProperties: false,
 } as const;
 
@@ -22,15 +25,17 @@ export function buildApp({ links, baseUrl, logger = false }: AppDeps): FastifyIn
 
   app.get('/health', async () => ({ status: 'ok' }));
 
-  app.post<{ Body: { url: string } }>(
+  app.post<{ Body: { url: string; alias?: string } }>(
     '/links',
     { schema: { body: createBody } },
     async (request, reply) => {
       try {
-        const link = await links.create(request.body.url);
+        const link = await links.create(request.body.url, request.body.alias);
         return reply.code(201).send(view(link));
       } catch (err) {
         if (err instanceof InvalidUrlError) return reply.code(400).send({ error: err.message });
+        if (err instanceof InvalidAliasError) return reply.code(400).send({ error: err.message });
+        if (err instanceof AliasTakenError) return reply.code(409).send({ error: err.message });
         throw err;
       }
     },
