@@ -121,3 +121,9 @@ describe('GET /health', () => {
     expect((await app.inject({ method: 'GET', url: '/health' })).json()).toEqual({ status: 'ok' });
   });
 });
+
+describe('migrate', () => {
+  it('is safe to run again on an already-migrated database', async () => {
+    await expect(migrate(db)).resolves.toBeUndefined();
+  });
+});

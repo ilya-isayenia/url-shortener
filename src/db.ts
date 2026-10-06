@@ -17,4 +17,7 @@ export async function migrate(db: Db): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await db.query('ALTER TABLE links ADD COLUMN IF NOT EXISTS is_alias boolean NOT NULL DEFAULT false');
+  // Not unique: existing random slugs may already differ only in case.
+  await db.query('CREATE INDEX IF NOT EXISTS links_lower_slug_idx ON links (lower(slug))');
 }
