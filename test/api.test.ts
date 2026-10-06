@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Redis } from 'ioredis';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
@@ -21,6 +22,7 @@ function databaseUrl(name: string): string {
 let admin: pg.Client;
 let db: Db;
 let cache: Cache;
+let redis: Redis;
 let app: ReturnType<typeof buildApp>;
 
 beforeAll(async () => {
@@ -38,16 +40,25 @@ beforeAll(async () => {
   });
   await migrate(db);
   cache = createCache(process.env.REDIS_URL, `test:${run}:`);
+  redis = new Redis(process.env.REDIS_URL);
   app = buildApp({ links: new LinkService(db, cache, 60), baseUrl: BASE_URL });
 });
 
+async function clearCache(): Promise<void> {
+  const keys = await redis.keys(`test:${run}:*`);
+  if (keys.length) await redis.del(...keys);
+}
+
 beforeEach(async () => {
   await db.query('TRUNCATE links RESTART IDENTITY');
+  await clearCache();
 });
 
 afterAll(async () => {
+  await clearCache();
   await app?.close();
   await cache?.close();
+  await redis?.quit();
   await db?.end();
   await admin?.query(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
   await admin?.end();
@@ -62,6 +73,7 @@ describe('POST /links', () => {
     const body = res.json();
     expect(body.url).toBe('https://example.com/docs');
     expect(body.shortUrl).toBe(`${BASE_URL}/${body.slug}`);
+    expect(body.slug).toMatch(/^[0-9a-zA-Z]{7}$/);
   });
 
   it('gives the same URL a new slug each time', async () => {
