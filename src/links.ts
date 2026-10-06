@@ -11,7 +11,7 @@ export interface Link {
 /** The URL can't be shortened: the API answers 400 with the message. */
 export class InvalidUrlError extends Error {}
 
-/** The alias isn't a valid, free-form slug or is a reserved name: the API answers 400. */
+/** The alias isn't 1 to 32 ASCII letters and digits, or is a reserved name: the API answers 400. */
 export class InvalidAliasError extends Error {}
 
 /** The alias is already someone's slug, ignoring case: the API answers 409. */

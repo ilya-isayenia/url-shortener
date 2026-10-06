@@ -136,7 +136,7 @@ describe('POST /links with an alias', () => {
   });
 
   it('refuses a malformed alias, creating no link', async () => {
-    const aliases = ['', 'my-docs', 'docs/x', 'dökumente', 'Key', 'a'.repeat(33), null];
+    const aliases = ['', 'my-docs', 'docs/x', 'dökumente', '\u212Aey', 'a'.repeat(33), null];
     for (const alias of aliases) {
       const res = await shortenAs('https://example.com/docs', alias);
       expect(res.statusCode).toBe(400);

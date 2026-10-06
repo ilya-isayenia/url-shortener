@@ -35,7 +35,7 @@ describe('toAlias', () => {
   it('refuses anything that is not a valid, non-reserved slug', () => {
     expect(toAlias('')).toBeNull();
     expect(toAlias('my-docs')).toBeNull();
-    expect(toAlias('Key')).toBeNull();
+    expect(toAlias('\u212Aey')).toBeNull();
     expect(toAlias('a'.repeat(33))).toBeNull();
     expect(toAlias('health')).toBeNull();
     expect(toAlias('Health')).toBeNull();
