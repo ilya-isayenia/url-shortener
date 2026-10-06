@@ -101,7 +101,8 @@ export class LinkService {
     const link = await this.get(slug);
     if (!link) return { status: 'missing' };
     const ttl = cacheTtl(link, this.cacheTtlSeconds);
-    if (link.expiresAt && ttl === 0) return { status: 'expired' };
+    if (link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return { status: 'expired' };
+    if (ttl === 0) return { status: 'found', url: link.url };
     await this.cache.set(cacheKey(slug), link.url, ttl);
     return { status: 'found', url: link.url };
   }
