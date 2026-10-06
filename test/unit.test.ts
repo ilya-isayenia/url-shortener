@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidUrlError, normalizeUrl } from '../src/links.js';
-import { SLUG_LENGTH, isSlug, newSlug } from '../src/slug.js';
+import { SLUG_LENGTH, isSlug, newSlug, toAlias } from '../src/slug.js';
 
 describe('newSlug', () => {
   it('makes slugs of letters and digits, of the default length', () => {
@@ -21,6 +21,25 @@ describe('isSlug', () => {
     expect(isSlug('')).toBe(false);
     expect(isSlug('a-b')).toBe(false);
     expect(isSlug('a'.repeat(33))).toBe(false);
+  });
+});
+
+describe('toAlias', () => {
+  it('lowercases a valid alias', () => {
+    expect(toAlias('docs')).toBe('docs');
+    expect(toAlias('Docs')).toBe('docs');
+    expect(toAlias('a')).toBe('a');
+    expect(toAlias('A'.repeat(32))).toBe('a'.repeat(32));
+  });
+
+  it('refuses anything that is not a valid, non-reserved slug', () => {
+    expect(toAlias('')).toBeNull();
+    expect(toAlias('my-docs')).toBeNull();
+    expect(toAlias('Key')).toBeNull();
+    expect(toAlias('a'.repeat(33))).toBeNull();
+    expect(toAlias('health')).toBeNull();
+    expect(toAlias('Health')).toBeNull();
+    expect(toAlias('links')).toBeNull();
   });
 });
 
